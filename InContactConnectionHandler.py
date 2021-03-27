@@ -12,6 +12,7 @@ AuthenticationError
 # Standard Library Imports
 from base64 import b64encode
 from datetime import datetime, timedelta
+from contextlib import contextmanager
 
 # Third Party Library Imports
 import requests
@@ -31,6 +32,30 @@ class InContactConnectionHandler:
 		self.refresh_info = None
 		self.session = None
 		self.version = version
+
+	@contextmanager
+	def get_session(self, username, password, business_unit, vendor, app):
+		"""
+		Set up a requests.Session() object, get auth from inContact, and
+		share the header information across requests going forward. Persist
+		TCP connection across requests. Return instance with session object,
+		tear down and clean up on close.
+		"""
+		try:
+			self.get_auth(username, password, business_unit, vendor, app)
+			self.session = requests.Session()
+			token_type = self.token_info['token_type']
+			token = self.token_info['access_token']
+			self.session.headers.update({
+				'Authorization': f'{token_type} {token}'
+			})
+			yield self
+		finally:
+			self.session.close()
+			self.session = None
+			self.is_authenticated = False
+			self.token_info = None
+			self.refresh_info = None
 
 	def __make_request__(self, *args, **kwargs):
 		"""
